@@ -94,6 +94,10 @@ input:focus{outline:none;border-color:var(--blau)}
   width:38px;height:44px;background:var(--gelb);color:#33290a;font-weight:800;font-size:22px;
   border-radius:8px;margin-top:10px}
 .m-fehler{color:var(--rot);font-size:14px;margin-top:8px;font-weight:600}
+.raetsel{border-top:1px dashed var(--linie);padding-top:12px;margin-top:12px}
+.raetsel:first-of-type{border-top:none;padding-top:4px;margin-top:8px}
+.raetsel.geloest{opacity:.72}
+.r-frage{margin:0 0 8px;font-size:15.5px}
 
 .sammlung{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
 .slot{width:38px;height:46px;border-radius:8px;display:flex;align-items:center;
@@ -323,6 +327,17 @@ const ETAPPEN = [
    "Die beste Grimasse eures Sitznachbarn.",
    "Ein Verkehrsschild, das ihr noch nie gesehen habt.",
    "Der Moment, in dem zum ersten Mal „Sind wir bald da?“ fällt – Selfie dazu."
+  ],
+  raetsel:[
+   {frage:"Auf einem Rastplatz stehen nur Autos und Motorräder: zusammen 7 Fahrzeuge und 22 Räder. Wie viele Motorräder sind es?",
+    tipp:"Autos haben 4 Räder, Motorräder 2. Ratet eine Zahl und rechnet die Räder nach.",
+    pruef:(v)=>erstZahl(v)===3},
+   {frage:"Vier hab ich, sie drehen sich stundenlang, und ohne sie kommt ihr keinen Meter weit. Was bin ich?",
+    tipp:"Am Auto sind es genau vier davon.",
+    pruef:(v)=>/r[äa]der|reifen/i.test(v)},
+   {frage:"Ich denke mir eine Zahl, verdopple sie und ziehe 6 ab – heraus kommt 30. Welche Zahl war es?",
+    tipp:"Rückwärts rechnen: erst 6 wieder dazu, dann halbieren.",
+    pruef:(v)=>erstZahl(v)===18}
   ]
 },
 {
@@ -389,6 +404,18 @@ const ETAPPEN = [
    "Euer Frühstück, bevor am Horizont Land auftaucht.",
    "Macht das Schiffshorn nach – Foto vom Gesicht dabei.",
    "Der längste Gang, den ihr an Bord findet."
+  ],
+  raetsel:[
+   {frage:"Der Kapitän ist heute viermal so alt wie der Schiffsjunge. In 20 Jahren ist er nur noch doppelt so alt. Wie alt ist der Kapitän heute?",
+    tipp:"Probiert ein Alter für den Jungen durch, bis beides passt. Er ist noch keine 15.",
+    pruef:(v)=>erstZahl(v)===40},
+   {frage:"Wie heißt die vorderste Spitze eines Schiffs – die, die das Wasser teilt?",
+    tipp:"Das Gegenteil vom Heck. Drei Buchstaben, beginnt mit B.",
+    pruef:(v)=>/bug/i.test(v)},
+   {frage:"Euer Schiff fährt 30 km/h. Eine Möwe fliegt genau daneben, gleich schnell und in dieselbe Richtung. Wie schnell bewegt sich die Möwe – vom Schiff aus gesehen?",
+    tipp:"Schaut in Gedanken vom Deck zur Möwe. Bewegt sie sich für euch überhaupt?",
+    pruef:(v)=>erstZahl(v)===0 || /null|gar ?nicht|steht|still/i.test(v),
+    fast:{wenn:/30/, text:"30 km/h ist die Geschwindigkeit übers Wasser – gefragt ist, wie schnell sie sich für EUCH auf dem Schiff bewegt."}}
   ]
 },
 {
@@ -469,6 +496,17 @@ const ETAPPEN = [
    "Ein Bootssteg, der weit ins Wasser ragt.",
    "Die längste gerade Straße, die im Wald verschwindet.",
    "Ein Wegweiser, der irgendwo ins Nirgendwo zeigt."
+  ],
+  raetsel:[
+   {frage:"Auf einer Wiese sind Hasen und Hühner: zusammen 8 Köpfe und 26 Beine. Wie viele Hasen sind es?",
+    tipp:"Hasen haben 4 Beine, Hühner 2. Ratet eine Zahl und zählt die Beine nach.",
+    pruef:(v)=>erstZahl(v)===5},
+   {frage:"Blau-gelb, mit einem Kreuz, und ich wehe an vielen Häusern und Fahnenmasten. Was bin ich?",
+    tipp:"In Schweden seht ihr mich überall. Ich bin aus Stoff und wehe im Wind.",
+    pruef:(v)=>/flagge|fahne/i.test(v)},
+   {frage:"Beim Blaubeeren-Pflücken habt ihr 12 Beeren. Ihr esst die Hälfte, dann legt Papa noch 4 dazu. Wie viele habt ihr jetzt?",
+    tipp:"Erst die Hälfte von 12, dann 4 dazuzählen.",
+    pruef:(v)=>erstZahl(v)===10}
   ]
 }
 ];
@@ -504,7 +542,8 @@ let notfallSpeicher = null;   /* haelt den Stand wenigstens, solange die Seite o
 function leer(){
   return {spieler:null, tachoStart:null, strecke:{}, impulsIdx:0, impulsZeit:0, offenId:null,
           erledigt:{}, antworten:{}, zeit:{}, ort:{}, entwurf:{},
-          etappenGeloest:{}, aktiv:1, finaleGeloest:false};
+          etappenGeloest:{}, aktiv:1, finaleGeloest:false,
+          raetselGeloest:{}, raetselAntwort:{}};
 }
 function laden(){
   if(SPEICHER_OK){
@@ -546,6 +585,8 @@ function melde(text, gut){
    HELFER
    ============================================================ */
 const mid=(e,n)=>"e"+e+"m"+n;
+const rid=(e,i)=>"e"+e+"r"+i;   /* Knobel-Ecke: Rätsel-ID */
+function erstZahl(v){ const m=String(v).match(/-?\d+/); return m?parseInt(m[0],10):null; }
 const etappe=(id)=>{ for(let i=0;i<ETAPPEN.length;i++) if(ETAPPEN[i].id===id) return ETAPPEN[i]; return null; };
 function anzahlMissionen(){let s=0; ETAPPEN.forEach(e=>s+=e.missionen.length); return s;}
 function anzahlErledigt(){let s=0; for(const k in S.erledigt) if(S.erledigt[k]) s++; return s;}
@@ -719,6 +760,39 @@ function etappeHtml(e){
 
   e.missionen.forEach(m=>{ h+=missionHtml(e,m); });
   h+=sammlungHtml(e);
+  h+=raetselHtml(e);
+  return h;
+}
+
+/* Knobel-Ecke: freiwillige Rätsel je Etappe. Geben KEINEN Buchstaben und zählen
+   nicht zu den 29 Missionen - das Anagramm bleibt unberührt. */
+function raetselHtml(e){
+  if(!e.raetsel || !e.raetsel.length) return "";
+  let geloest=0;
+  e.raetsel.forEach((r,i)=>{ if(S.raetselGeloest[rid(e.id,i)]) geloest++; });
+  let h='<div class="karte"><h3>&#129513; Knobel-Ecke</h3>'+
+        '<p class="klein">Freiwillige Rätsel &ndash; zählen nicht zu den Missionen, geben keinen Buchstaben. '+
+        '<b>'+geloest+' von '+e.raetsel.length+'</b> geknackt.</p>';
+  e.raetsel.forEach((r,i)=>{
+    const id=rid(e.id,i);
+    const fertig=!!S.raetselGeloest[id];
+    h+='<div class="raetsel'+(fertig?" geloest":"")+'">';
+    h+='<p class="r-frage"><b>'+(i+1)+'.</b> '+r.frage+'</p>';
+    if(fertig){
+      h+='<p class="klein" style="color:var(--gruen);font-weight:700">&#10003; Geknackt'+
+         (S.raetselAntwort[id]?': <b>'+esc(S.raetselAntwort[id])+'</b>':'')+'</p>'+
+         '<p class="klein"><button class="btn-klein" onclick="raetselZurueck(\''+id+'\')">nochmal knobeln</button></p>';
+    } else {
+      if(r.tipp) h+='<div class="tipp"><b>Tipp:</b> '+r.tipp+'</div>';
+      h+='<div class="feld-zeile"><input type="text" id="rin_'+id+'" placeholder="Antwort" '+
+         'value="'+escAttr(S.entwurf["r"+id]||"")+'" oninput="merkeEntwurf(\'r'+id+'\',this.value)" '+
+         'onkeydown="beiEnter(event,function(){pruefeRaetsel('+e.id+','+i+')})">'+
+         '<button class="btn-klein" onclick="pruefeRaetsel('+e.id+','+i+')">OK</button></div>'+
+         '<div class="m-fehler versteckt" id="rerr_'+id+'"></div>';
+    }
+    h+='</div>';
+  });
+  h+='</div>';
   return h;
 }
 
@@ -1058,6 +1132,26 @@ function pruefe(eid,n){
   S.antworten[id]=v; delete S.entwurf[id]; erledige(id);
 }
 
+function pruefeRaetsel(eid,i){
+  const e=etappe(eid), r=e.raetsel[i], id=rid(eid,i);
+  const el=document.getElementById("rin_"+id), err=document.getElementById("rerr_"+id);
+  const v=(el.value||"").trim();
+  if(!v){ err.textContent="Da steht noch nichts."; err.className="m-fehler"; return; }
+  if(!r.pruef(v)){
+    err.textContent = (r.fast && r.fast.wenn.test(v)) ? r.fast.text
+                    : "Noch nicht richtig – denkt in Ruhe nochmal nach.";
+    err.className="m-fehler"; return;
+  }
+  S.raetselGeloest[id]=true; S.raetselAntwort[id]=v;
+  delete S.entwurf["r"+id];
+  speichern(); zeichne();
+  melde("Rätsel geknackt!", true);
+}
+function raetselZurueck(id){
+  delete S.raetselGeloest[id]; delete S.raetselAntwort[id];
+  speichern(); zeichne();
+}
+
 function pruefeLoesung(eid){
   const e=etappe(eid);
   const el=document.getElementById("loes_"+eid), err=document.getElementById("loeserr_"+eid);
@@ -1134,6 +1228,9 @@ function berichtText(){
   }
   const gesamt=anzahlMissionen(), erl=anzahlErledigt();
   L.push("**Geschafft:** "+erl+" von "+gesamt+" Missionen");
+  let rGes=0, rGel=0;
+  ETAPPEN.forEach(e=>{ (e.raetsel||[]).forEach((r,i)=>{ rGes++; if(S.raetselGeloest[rid(e.id,i)]) rGel++; }); });
+  if(rGes) L.push("**Knobel-Ecke:** "+rGel+" von "+rGes+" Rätseln gelöst");
   L.push("");
 
   ETAPPEN.forEach(e=>{
