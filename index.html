@@ -253,7 +253,7 @@ const ETAPPEN = [
   chronist:"Felix",
   loesung:"SCHWEDENKAI",
   loesungHinweis:"11 Buchstaben – der Ort in Kiel, an dem eure Fähre liegt.",
-  strecke:["Start","Ring","Norden","Ostsee","Kiel"],
+  strecke:["Leipzig","Ring","Norden","Ostsee","Kiel"],
   tacho:true,
   missionen:[
    {n:1, rolle:"team", titel:"Startprotokoll", b:"K",
@@ -650,18 +650,33 @@ function etappeHtml(e){
   }
 
   if(e.tacho){
-    const m=marken();
-    if(!S.tachoStart){
-      h+='<div style="margin-top:14px"><p class="klein"><b>Kilometerstand beim Start:</b></p>'+
-         '<div class="feld-zeile"><input type="number" id="tachoFeld" inputmode="numeric" placeholder="z. B. 87412" onkeydown="beiEnter(event,setzeTacho)">'+
-         '<button class="btn-klein" onclick="setzeTacho()">OK</button></div></div>';
-    } else {
+    /* Hat diese Etappe eine eigene Tacho-Mission (Etappe 1: "Startprotokoll")?
+       Dann wird der Kilometerstand DORT eingetippt - hier oben kein zweites Feld,
+       sonst tippt man die Zahl doppelt. Etappe 3 hat keine solche Mission, dort
+       ist dieses Feld die einzige Eingabestelle. */
+    const hatTachoMission = e.missionen.some(x=>x.feld==="tacho");
+    if(S.tachoStart){
+      const m=marken();
       h+='<div class="marken">'+
          '<div class="marke"><div class="z">'+m.dreier.toLocaleString("de-DE")+'</div><div class="n">Dreier-Marke</div></div>'+
          '<div class="marke"><div class="z">'+m.null3.toLocaleString("de-DE")+'</div><div class="n">'+m.null3label+'</div></div>'+
          '<div class="marke"><div class="z">'+m.pal.toLocaleString("de-DE")+'</div><div class="n">Palindrom</div></div>'+
-         '</div><p class="klein" style="margin-top:6px">Gerechnet ab '+S.tachoStart.toLocaleString("de-DE")+' km. '+
-         'Schon geknackt? <button class="btn-klein" onclick="tachoNeu()">Neuen Stand eintippen</button></p>';
+         '</div>';
+      if(hatTachoMission){
+        h+='<p class="klein" style="margin-top:6px">Tacho-Rechner läuft ab '+
+           S.tachoStart.toLocaleString("de-DE")+' km (eingetragen in Mission 1).</p>';
+      } else {
+        h+='<p class="klein" style="margin-top:6px">Gerechnet ab '+S.tachoStart.toLocaleString("de-DE")+' km. '+
+           'Schon geknackt? <button class="btn-klein" onclick="tachoNeu()">Neuen Stand eintippen</button></p>';
+      }
+    } else if(hatTachoMission){
+      h+='<div class="tipp" style="margin-top:14px">Der <b>Tacho-Rechner</b> (die nächsten '+
+         'Schnapszahlen) erscheint hier automatisch, sobald ihr unten in '+
+         '<b>Mission 1 &middot; Startprotokoll</b> den Kilometerstand eingetragen habt.</div>';
+    } else {
+      h+='<div style="margin-top:14px"><p class="klein"><b>Aktueller Kilometerstand:</b></p>'+
+         '<div class="feld-zeile"><input type="number" id="tachoFeld" inputmode="numeric" placeholder="z. B. 88450" onkeydown="beiEnter(event,setzeTacho)">'+
+         '<button class="btn-klein" onclick="setzeTacho()">OK</button></div></div>';
     }
   }
   h+='</div>';
