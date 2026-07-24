@@ -172,7 +172,6 @@ footer button{background:none;color:var(--grau);font-size:12px;text-decoration:u
 </header>
 
 <div class="wrap">
-  <div id="syncBox"></div>
   <div id="speicherHinweis"></div>
   <div id="offlineHinweis"></div>
 
@@ -457,7 +456,7 @@ let notfallSpeicher = null;   /* haelt den Stand wenigstens, solange die Seite o
 
 function leer(){
   return {spieler:null, tachoStart:null, strecke:{}, impulsIdx:0, impulsZeit:0, offenId:null,
-          erledigt:{}, antworten:{}, zeit:{}, ort:{},
+          erledigt:{}, antworten:{}, zeit:{}, ort:{}, entwurf:{},
           etappenGeloest:{}, aktiv:1, finaleGeloest:false};
 }
 function laden(){
@@ -522,6 +521,18 @@ function marken(){
 }
 
 function esc(s){return String(s).replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));}
+/* wie esc, aber zusaetzlich fuer den Einsatz in value="..." (Anfuehrungszeichen) */
+function escAttr(s){return String(s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));}
+
+/* Entwurf-Speicher: was in ein Feld getippt, aber noch nicht abgeschickt wurde,
+   wird automatisch gemerkt - so geht bei einem Wechsel oder App-Neustart nichts
+   verloren. Gebuendelt gespeichert und OHNE Neuzeichnen (sonst springt der Cursor). */
+let entwurfTimer=null;
+function merkeEntwurf(id, val){
+  S.entwurf[id]=val;
+  clearTimeout(entwurfTimer);
+  entwurfTimer=setTimeout(speichern, 400);
+}
 
 /* ============================================================
    RENDERN
@@ -530,7 +541,6 @@ function setzeSpieler(name){ S.spieler=name; speichern(); zeichne(); }
 
 function zeichne(){
   speicherHinweis();
-  zeigeSyncUI();
 
   const sz=document.getElementById("spielerZeile");
   if(S.spieler){
@@ -637,25 +647,24 @@ function missionHtml(e,m){
   h+='<div class="m-body"><p>'+m.text+'</p>';
   if(m.tipp) h+='<div class="tipp"><b>Tipp:</b> '+m.tipp+'</div>';
 
-  /* Kamera: oeffnet auf dem iPhone die native Kamera in Vollbild */
+  /* Kamera: oeffnet auf dem iPhone die native Kamera in Vollbild.
+     Nach der Aufnahme bietet die App sofort an, das Originalfoto in die
+     iPhone-Fotos (Mediathek) zu legen - dort gehoert es hin. */
   h+='<input type="file" accept="image/*" capture="environment" class="versteckt" '+
      'id="kam_'+id+'" onchange="belegAufnehmen(this,\''+id+'\')">';
   if(bilder[id]){
     h+='<div class="beleg"><img src="'+bilder[id]+'" alt="Beleg">'+
+       '<p class="klein" style="margin-top:6px">Vorschau &ndash; das Originalfoto liegt in euren Fotos.</p>'+
        '<div class="beleg-knoepfe">'+
-       '<button class="btn-klein" onclick="belegSichern(\''+id+'\')">In Fotos sichern</button>'+
+       '<button class="btn-klein" onclick="belegSichern(\''+id+'\')">Nochmal in Fotos</button>'+
        '<button class="btn-klein" onclick="kameraOeffnen(\''+id+'\')">Neu</button>'+
        '<button class="btn-klein" onclick="belegLoeschen(\''+id+'\')">Weg</button>'+
        '</div></div>';
   } else {
     h+='<div class="kamerazeile">'+
-       '<button class="btn-kamera" onclick="kameraOeffnen(\''+id+'\')">'+
-         'Kamera<span>Beleg bleibt hier</span></button>';
-    if(IST_IOS){
-      h+='<button class="btn-kamera hell" onclick="kurzbefehlKamera()">'+
-         'Kamera-App<span>Foto in die Mediathek</span></button>';
-    }
-    h+='</div>';
+       '<button class="btn-kamera hell" onclick="kameraOeffnen(\''+id+'\')">'+
+         'Foto aufnehmen<span>Kamera öffnen &middot; Foto kommt in eure Fotos</span></button>'+
+       '</div>';
   }
 
   if(fertig){
@@ -675,12 +684,14 @@ function missionHtml(e,m){
     h+='<p class="klein" style="margin-top:8px">'+
        '<button class="btn-klein" onclick="zuruecknehmen(\''+id+'\')">doch nicht erledigt</button></p>';
   } else if(m.feld==="tacho"){
-    h+='<div class="feld-zeile"><input type="number" inputmode="numeric" id="in_'+id+'" placeholder="Kilometerstand">'+
+    h+='<div class="feld-zeile"><input type="number" inputmode="numeric" id="in_'+id+'" placeholder="Kilometerstand" '+
+       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)">'+
        '<button class="btn-klein" onclick="loeseTacho(\''+id+'\')">Los!</button></div>';
   } else if(m.feld){
     h+='<p class="klein" style="margin-top:10px">'+(m.frage||"Eure Antwort:")+'</p>'+
        '<div class="feld-zeile"><input type="'+(m.feld==="zahl"?"number":"text")+'" id="in_'+id+'" '+
-       (m.feld==="zahl"?'inputmode="numeric" ':'')+'placeholder="hier eintippen">'+
+       (m.feld==="zahl"?'inputmode="numeric" ':'')+'placeholder="hier eintippen" '+
+       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)">'+
        '<button class="btn-klein" onclick="pruefe('+e.id+','+m.n+')">OK</button></div>'+
        '<div class="m-fehler versteckt" id="err_'+id+'"></div>';
   } else {
@@ -709,7 +720,8 @@ function sammlungHtml(e){
   } else if(gesammelt.length===e.missionen.length){
     h+='<p style="margin-top:10px"><b>Alle Buchstaben da!</b> Sortiert sie zum Lösungswort.</p>'+
        '<p class="klein">'+e.loesungHinweis+'</p>'+
-       '<div class="feld-zeile"><input type="text" id="loes_'+e.id+'" placeholder="Lösungswort" autocapitalize="characters" autocorrect="off">'+
+       '<div class="feld-zeile"><input type="text" id="loes_'+e.id+'" placeholder="Lösungswort" autocapitalize="characters" autocorrect="off" '+
+       'value="'+escAttr(S.entwurf["loes"+e.id]||"")+'" oninput="merkeEntwurf(\'loes'+e.id+'\',this.value)">'+
        '<button class="btn-klein" onclick="pruefeLoesung('+e.id+')">Prüfen</button></div>'+
        '<div class="m-fehler versteckt" id="loeserr_'+e.id+'"></div>';
   } else {
@@ -735,7 +747,8 @@ function finaleHtml(){
   return '<div class="karte"><h3>&#9733; '+FINALE.titel+'</h3><p>'+FINALE.text+'</p>'+
     '<div class="tipp"><b>Tipp:</b> '+FINALE.tipp+'</div>'+
     '<p class="klein" style="margin-top:10px">'+FINALE.frage+'</p>'+
-    '<div class="feld-zeile"><input type="text" id="in_finale" placeholder="Datum">'+
+    '<div class="feld-zeile"><input type="text" id="in_finale" placeholder="Datum" '+
+    'value="'+escAttr(S.entwurf["finale"]||"")+'" oninput="merkeEntwurf(\'finale\',this.value)">'+
     '<button class="btn-klein" onclick="pruefeFinale()">OK</button></div>'+
     '<div class="m-fehler versteckt" id="err_finale"></div></div>';
 }
@@ -756,7 +769,7 @@ function loeseTacho(id){
   const v=parseInt(document.getElementById("in_"+id).value,10);
   if(!v||v<1){ melde("Bitte den Kilometerstand eintippen."); return; }
   S.tachoStart=v; S.antworten[id]=v.toLocaleString("de-DE")+" km";
-  erledige(id);
+  delete S.entwurf[id]; erledige(id);
 }
 
 function erledige(id){
@@ -791,25 +804,39 @@ function kameraOeffnen(id){
 }
 
 /* ------------------------------------------------------------
-   Weg 2 (nur iPhone): Apples Kurzbefehl-Schema.
-   Startet einen Kurzbefehl namens "Nordstern", der ein Foto aufnimmt
-   UND es selbsttaetig in der Fotomediathek sichert - das kann eine
-   Webseite selbst nicht. Setzt voraus, dass der Kurzbefehl existiert.
+   Foto in die iPhone-Mediathek legen.
+   Eine Webseite kann NICHT von sich aus in die Fotos schreiben - der
+   iOS-Weg ist das Teilen-Menue: Wir reichen das Originalfoto per
+   navigator.share weiter, der Nutzer tippt einmal auf "Bild sichern",
+   und es liegt in der Mediathek. Das muss synchron im Fingertipp der
+   Aufnahme passieren, sonst blockt iOS das Teilen.
    ------------------------------------------------------------ */
-/* let statt const: laesst sich notfalls von Hand setzen, wenn die Erkennung danebenliegt */
-let IST_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-              (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
-const KURZBEFEHL="Nordstern";
-
-function kurzbefehlKamera(){
-  if(!IST_IOS){ melde("Das geht nur auf dem iPhone."); return; }
-  melde("Kurzbefehl wird gestartet …");
-  window.location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(KURZBEFEHL);
+function belegInMediathek(datei){
+  try{
+    if(navigator.canShare && navigator.canShare({files:[datei]}) && navigator.share){
+      navigator.share({files:[datei]}).catch(()=>{});
+      return true;
+    }
+  }catch(e){}
+  return false;
 }
 
 function belegAufnehmen(input, id){
   const datei = input.files && input.files[0];
   if(!datei) return;
+
+  /* 1) SOFORT (noch im Fingertipp) das Originalfoto zum Sichern in die
+        Fotos-Mediathek anbieten - das ist der Hauptweg. */
+  const geteilt = belegInMediathek(datei);
+
+  /* Zeitstempel: markiert die Mission als "Foto gemacht" - auch dann, wenn
+     die kleine Vorschau unten (Schritt 2) am vollen Speicher scheitern sollte. */
+  if(!S.zeit[id]) S.zeit[id]=new Date().toISOString();
+  speichern();
+
+  /* 2) zusaetzlich eine kleine Vorschau in der App merken (Beweis + Bericht).
+        Laeuft der Speicher voll, geht nur die Vorschau verloren - das echte
+        Foto liegt dann trotzdem in den Fotos. */
   const leser = new FileReader();
   leser.onload = (ev)=>{
     const img = new Image();
@@ -823,23 +850,21 @@ function belegAufnehmen(input, id){
       c.getContext("2d").drawImage(img,0,0,w,h);
       let klein;
       try{ klein = c.toDataURL("image/jpeg", 0.62); }
-      catch(e){ melde("Bild konnte nicht verarbeitet werden."); return; }
+      catch(e){ zeichne(); return; }
 
       bilder[id]=klein;
-      if(speichereBilder()){
-        if(!S.zeit[id]) S.zeit[id]=new Date().toISOString();
-        speichern(); zeichne();
-        melde("Beleg gespeichert!", true);
-      } else {
-        delete bilder[id];
-        zeichne();
-        melde("Speicher voll – Beleg nicht gesichert. Der Spielstand ist sicher.");
+      if(!speichereBilder()) delete bilder[id];   /* Vorschau optional - Spielstand bleibt */
+      zeichne();
+      if(!geteilt){
+        /* Kein Teilen moeglich (aelteres Geraet): Hinweis, wie das Foto trotzdem
+           in die Mediathek kommt. */
+        melde("Foto gemerkt. Tippt „Nochmal in Fotos“, um es in eure Fotos zu legen.");
       }
     };
-    img.onerror = ()=>melde("Das Bild konnte nicht gelesen werden.");
+    img.onerror = ()=>zeichne();
     img.src = ev.target.result;
   };
-  leser.onerror = ()=>melde("Das Foto konnte nicht geladen werden.");
+  leser.onerror = ()=>zeichne();
   leser.readAsDataURL(datei);
   input.value="";     /* damit dasselbe Bild erneut gewaehlt werden kann */
 }
@@ -915,7 +940,7 @@ function pruefe(eid,n){
                     : "Noch nicht richtig – schaut nochmal genau hin.";
     err.className="m-fehler"; return;
   }
-  S.antworten[id]=v; erledige(id);
+  S.antworten[id]=v; delete S.entwurf[id]; erledige(id);
 }
 
 function pruefeLoesung(eid){
@@ -925,6 +950,7 @@ function pruefeLoesung(eid){
            .replace(/Ä/g,"A").replace(/Ö/g,"O").replace(/Ü/g,"U");
   if(v===e.loesung){
     S.etappenGeloest[eid]=true;
+    delete S.entwurf["loes"+eid];
     if(eid<3) S.aktiv=eid+1;
     if(eid===3) S.aktiv=9;
     speichern(); zeichne(); window.scrollTo(0,0);
@@ -942,7 +968,7 @@ function pruefeFinale(){
     err.textContent="Noch nicht. Sucht den Tag, an dem im Plan nur „Puffer“ steht.";
     err.className="m-fehler"; return;
   }
-  S.finaleGeloest=true; speichern(); zeichne(); window.scrollTo(0,0);
+  S.finaleGeloest=true; delete S.entwurf["finale"]; speichern(); zeichne(); window.scrollTo(0,0);
 }
 
 let zuruecksetzenBestaetigt=false;
@@ -1026,9 +1052,9 @@ function berichtText(){
   L.push("");
   const belegAnzahl=Object.keys(bilder).length;
   if(belegAnzahl){
-    L.push("**Beleg-Fotos in der App:** "+belegAnzahl+
-           " — liegen als kleine Bilder auf dem Handy und sind hier nicht eingebettet. "+
-           "Über „In Fotos sichern“ landen sie in der Mediathek.");
+    L.push("**Beleg-Fotos:** "+belegAnzahl+
+           " Missionen mit Foto. Die Originale liegen in eurer Fotos-App (Mediathek); "+
+           "in der App ist nur eine kleine Vorschau gespeichert.");
     L.push("");
   }
   L.push("> Die Ortsangaben sind GPS-Punkte, die unterwegs ohne Internet gespeichert wurden.");
@@ -1134,165 +1160,7 @@ if("serviceWorker" in navigator){
   });
 }
 
-/* ============================================================
-   CLOUD-SYNC  (optional, geraeteuebergreifend ueber Firebase)
-   Ohne ausgefuellte FIREBASE_CONFIG laeuft die App exakt wie
-   bisher – rein lokal. Sobald Config + Reise-Code gesetzt sind,
-   teilen sich alle Geraete mit demselben Code den Fortschritt.
-   ============================================================ */
-const FIREBASE_CONFIG = {
-  /* Werte aus der Firebase-Konsole hier einsetzen (siehe README).
-     Solange apiKey leer ist, bleibt alles lokal - dann laedt die App
-     NICHTS Fremdes und ist damit garantiert offline-fest. */
-  apiKey: "",
-  authDomain: "",
-  databaseURL: "",
-  projectId: ""
-};
-
-/* Firebase-SDK erst bei Bedarf nachladen (nur wenn Sync eingerichtet ist)
-   und nur wenn Internet da ist. Schlaegt das Laden fehl - z. B. auf dem Meer -
-   laeuft die App ganz normal weiter, nur der Abgleich ruht bis wieder Netz da ist.
-   So haengt kein externes Skript jemals im Startpfad der App. */
-const FIREBASE_SDK = [
-  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js",
-  "https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"
-];
-let sdkStatus = "leer";   /* leer | laedt | da | fehler */
-function ladeFirebaseSDK(fertig){
-  if(typeof firebase!=="undefined"){ sdkStatus="da"; fertig(true); return; }
-  if(sdkStatus==="laedt") return;
-  sdkStatus="laedt";
-  let i=0;
-  (function naechstes(){
-    if(i>=FIREBASE_SDK.length){ sdkStatus="da"; fertig(true); return; }
-    const s=document.createElement("script");
-    s.src=FIREBASE_SDK[i++];
-    s.async=true;
-    s.onload=naechstes;
-    s.onerror=()=>{ sdkStatus="fehler"; fertig(false); };
-    document.head.appendChild(s);
-  })();
-}
-
-function syncCloudFelder(){
-  return { tachoStart:S.tachoStart||null, strecke:S.strecke||{}, erledigt:S.erledigt||{},
-           antworten:S.antworten||{}, zeit:S.zeit||{}, ort:S.ort||{},
-           etappenGeloest:S.etappenGeloest||{}, finaleGeloest:!!S.finaleGeloest };
-}
-
-const Cloud = (function(){
-  let db=null, ref=null, code="", verbunden=false, stumm=false, timer=null;
-  /* "konfiguriert" = die Eltern WOLLEN Sync (apiKey gesetzt). Ob das SDK schon
-     geladen ist, ist davon getrennt - so erscheint die Sync-Box sofort, auch
-     bevor (oder ohne dass) das Netz das SDK liefert. */
-  function konfiguriert(){
-    return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
-  }
-  function start(){
-    if(!konfiguriert()){ zeigeSyncUI(); return; }
-    zeigeSyncUI();                         /* Code-Feld sofort zeigen */
-    if(db) return;                         /* schon verbunden - nichts weiter noetig */
-    ladeFirebaseSDK((ok)=>{
-      if(!ok) return;                      /* offline: bleibt lokal, spaeter erneut */
-      try{
-        if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-        db=firebase.database();
-      }catch(e){ db=null; return; }
-      code=(localStorage.getItem("nordstern_code")||"").trim();
-      if(code) verbinde(code);
-      zeigeSyncUI();
-    });
-  }
-  function verbinde(c){
-    if(!db) return;
-    code=(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
-    if(!code) return;
-    try{ localStorage.setItem("nordstern_code", code); }catch(e){}
-    if(ref) ref.off();
-    ref=db.ref("reisen/"+code);
-    ref.on("value", (snap)=>{
-      const r=snap.val();
-      if(!r){ pushJetzt(); return; }     /* erster Eintrag fuer diesen Code */
-      mergeRein(r);
-    }, ()=>{});
-    verbunden=true;
-    zeigeSyncUI();
-  }
-  function mergeRein(r){
-    /* Vereinigungs-Merge: was auf einem Geraet erledigt wurde, bleibt erledigt.
-       So loeschen sich zwei Handys nie gegenseitig den Fortschritt. */
-    let ver=false;
-    ["erledigt","antworten","zeit","ort","etappenGeloest","strecke"].forEach(k=>{
-      if(r[k] && typeof r[k]==="object"){
-        for(const id in r[k]){
-          if(JSON.stringify(S[k][id])!==JSON.stringify(r[k][id])){ S[k][id]=r[k][id]; ver=true; }
-        }
-      }
-    });
-    if(r.tachoStart && !S.tachoStart){ S.tachoStart=r.tachoStart; ver=true; }
-    if(r.finaleGeloest && !S.finaleGeloest){ S.finaleGeloest=true; ver=true; }
-    if(ver){
-      stumm=true;
-      try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
-      stumm=false;
-      zeichne();
-    }
-  }
-  function pushJetzt(){ if(ref){ try{ ref.update(syncCloudFelder()); }catch(e){} } }
-  function push(){
-    if(stumm || !ref) return;
-    clearTimeout(timer);
-    timer=setTimeout(pushJetzt, 700);   /* gebuendelt, spart Schreibvorgaenge */
-  }
-  function trennen(){
-    if(ref){ ref.off(); ref=null; }
-    verbunden=false; code="";
-    try{ localStorage.removeItem("nordstern_code"); }catch(e){}
-    zeigeSyncUI();
-  }
-  function status(){ return {konfiguriert:konfiguriert(), verbunden:verbunden, code:code}; }
-  return { start, verbinde, push, trennen, status, konfiguriert };
-})();
-
-/* speichern() erweitern: jede lokale Aenderung geht auch in die Cloud */
-const _speichern_lokal = speichern;
-speichern = function(){ _speichern_lokal(); try{ Cloud.push(); }catch(e){} };
-
-let syncEdit=false;
-function zeigeSyncUI(){
-  const el=document.getElementById("syncBox");
-  if(!el) return;
-  if(!Cloud.konfiguriert()){ el.innerHTML=""; return; }
-  const st=Cloud.status();
-  if(st.code && !syncEdit){
-    el.innerHTML='<div class="karte" style="padding:11px 13px;margin:12px 0;display:flex;'+
-      'align-items:center;gap:10px"><div style="font-size:20px">&#9729;&#65039;</div>'+
-      '<div style="flex:1"><b style="font-size:14px">Sync aktiv</b>'+
-      '<div class="klein">Code <b>'+esc(st.code)+'</b> &middot; alle Handys mit diesem Code teilen den Fortschritt.</div></div>'+
-      '<button class="btn-klein" onclick="syncOeffnen()">ändern</button></div>';
-  } else {
-    el.innerHTML='<div class="karte" style="margin:12px 0"><h3>&#9729;&#65039; Sync über mehrere Handys</h3>'+
-      '<p class="klein">Gebt auf <b>allen</b> Handys denselben Reise-Code ein – dann seht ihr überall '+
-      'denselben Fortschritt (sobald Internet da ist). Denkt euch einen aus, z. B. NORDSTERN2026.</p>'+
-      '<div class="feld-zeile"><input type="text" id="syncCodeFeld" placeholder="Reise-Code" '+
-      'autocapitalize="characters" autocorrect="off" value="'+esc(st.code)+'">'+
-      '<button class="btn-klein" onclick="syncVerbinden()">Verbinden</button></div></div>';
-  }
-}
-function syncOeffnen(){ syncEdit=true; zeigeSyncUI(); }
-function syncVerbinden(){
-  const f=document.getElementById("syncCodeFeld");
-  const c=(f&&f.value||"").trim();
-  if(!c){ melde("Bitte einen Reise-Code eintippen."); return; }
-  syncEdit=false; Cloud.verbinde(c);
-  melde("Sync verbunden – Code "+c.toUpperCase().replace(/[^A-Z0-9]/g,"")+".", true);
-}
-
 zeichne();
-Cloud.start();
-/* Kommt das Netz zurueck (z. B. wieder an Land), den Sync erneut versuchen. */
-window.addEventListener("online", ()=>{ try{ Cloud.start(); }catch(e){} });
 </script>
 </body>
 </html>

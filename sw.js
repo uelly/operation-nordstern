@@ -5,13 +5,14 @@
    Strategie:
    - Seite (index.html / Navigation): "network-first" -> online = neueste Version,
      offline = zuletzt gespeicherte Fassung.
-   - Uebrige eigene Dateien + Firebase-SDK: "stale-while-revalidate".
-   - Alles Fremde (Firebase-Datenbank-Verbindungen usw.) wird NICHT angefasst.
+   - Uebrige eigene Dateien (Icons, Manifest): "stale-while-revalidate".
+   - Die App laedt KEINE fremden Server mehr - alles liegt im Repo. Damit ist der
+     Offline-Betrieb komplett unabhaengig von jeder Internet-Verbindung.
 
    Wichtig: Bei jeder neuen Version unten CACHE hochzaehlen (v1 -> v2 ...),
    damit alte Dateien sicher ersetzt werden.
 */
-const CACHE = "nordstern-v2";
+const CACHE = "nordstern-v3";
 
 const EIGEN = [
   "./",
@@ -23,22 +24,13 @@ const EIGEN = [
   "./apple-touch-icon.png",
   "./favicon.png"
 ];
-/* Firebase-SDK: NUR fuer den optionalen Sync. Wird nicht mehr beim Install
-   vorgeladen (sonst haengt der Install am Netz) - es wird erst dann gecacht,
-   wenn die App es tatsaechlich anfordert. So braucht der Offline-Kern der App
-   keinerlei fremde Server. */
-const FREMD = [
-  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js",
-  "https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"
-];
-const VORLADEN = EIGEN;
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE).then((c) =>
-      // einzeln laden, damit ein fehlendes Fremd-Skript den Rest nicht sprengt
-      Promise.all(VORLADEN.map((u) => c.add(u).catch(() => null)))
+      // einzeln laden, damit eine einzelne fehlende Datei den Rest nicht sprengt
+      Promise.all(EIGEN.map((u) => c.add(u).catch(() => null)))
     )
   );
 });
@@ -56,14 +48,11 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  const eigen = url.origin === self.location.origin;
-  const bekanntesFremd = FREMD.indexOf(req.url) >= 0;
-
-  // Fremde Aufrufe (z. B. die Firebase-Echtzeit-Datenbank) unangetastet lassen
-  if (!eigen && !bekanntesFremd) return;
+  // Nur eigene Dateien behandeln - die App ruft ohnehin nichts Fremdes mehr auf.
+  if (url.origin !== self.location.origin) return;
 
   // Die eigentliche Seite: network-first -> online stets aktuell
-  if (req.mode === "navigate" || (eigen && (url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")))) {
+  if (req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")) {
     e.respondWith(
       fetch(req)
         .then((res) => {
@@ -76,7 +65,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Rest: sofort aus dem Cache, im Hintergrund aktualisieren
+  // Rest (Icons, Manifest): sofort aus dem Cache, im Hintergrund aktualisieren
   e.respondWith(
     caches.match(req).then((cached) => {
       const netz = fetch(req)
