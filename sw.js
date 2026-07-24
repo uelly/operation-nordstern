@@ -11,7 +11,7 @@
    Wichtig: Bei jeder neuen Version unten CACHE hochzaehlen (v1 -> v2 ...),
    damit alte Dateien sicher ersetzt werden.
 */
-const CACHE = "nordstern-v1";
+const CACHE = "nordstern-v2";
 
 const EIGEN = [
   "./",
@@ -23,11 +23,15 @@ const EIGEN = [
   "./apple-touch-icon.png",
   "./favicon.png"
 ];
+/* Firebase-SDK: NUR fuer den optionalen Sync. Wird nicht mehr beim Install
+   vorgeladen (sonst haengt der Install am Netz) - es wird erst dann gecacht,
+   wenn die App es tatsaechlich anfordert. So braucht der Offline-Kern der App
+   keinerlei fremde Server. */
 const FREMD = [
   "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"
 ];
-const VORLADEN = EIGEN.concat(FREMD);
+const VORLADEN = EIGEN;
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();

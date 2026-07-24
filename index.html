@@ -128,6 +128,9 @@ input:focus{outline:none;border-color:var(--blau)}
 /* Warnung, wenn das Geraet nichts speichern kann */
 .speicherwarnung{background:#fdeaea;border:2px solid var(--rot);color:#7a1a1d;
   border-radius:12px;padding:13px;margin:14px 0;font-size:14.5px;line-height:1.4}
+/* Bestaetigung: App ist fuer offline gesichert (Flugmodus/Meer ok) */
+.offlinebereit{background:#eaf6ee;border:1px solid var(--gruen);color:#1b4d36;
+  border-radius:12px;padding:10px 13px;margin:12px 0;font-size:14px;line-height:1.4}
 /* Eigene Meldung statt alert() - in der iOS-Dateivorschau ist alert unzuverlaessig */
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:99;
   background:var(--blau);color:#fff;padding:14px 20px;border-radius:12px;font-weight:600;
@@ -171,6 +174,7 @@ footer button{background:none;color:var(--grau);font-size:12px;text-decoration:u
 <div class="wrap">
   <div id="syncBox"></div>
   <div id="speicherHinweis"></div>
+  <div id="offlineHinweis"></div>
 
   <div id="start">
     <div class="karte">
@@ -216,9 +220,9 @@ footer button{background:none;color:var(--grau);font-size:12px;text-decoration:u
 
 <div id="toast"></div>
 
-<!-- Firebase-SDK: nur fuer den optionalen Sync. Ohne Konfiguration ungenutzt. -->
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<!-- Firebase-SDK wird NICHT mehr hier geladen: es haengt sonst im Startpfad und
+     kann bei wackligem Netz (Faehr-WLAN mit Portal) die App blockieren.
+     Der Sync laedt es weiter unten selbst nach - nur bei Bedarf und nur online. -->
 
 <script>
 /* ============================================================
@@ -1110,9 +1114,23 @@ setInterval(()=>{ if(S.spieler) neuerImpuls(false); }, 30000);
    SERVICE WORKER  – macht die App offline lauffaehig und sorgt
    dafuer, dass online immer die neueste Version geladen wird.
    ============================================================ */
+function offlineBereitZeigen(){
+  const el=document.getElementById("offlineHinweis");
+  if(!el) return;
+  /* controller gesetzt = die Seite wird bereits vom Service Worker bedient,
+     also liegt sie im Offline-Speicher. Dann ist der Flugmodus gefahrlos. */
+  if(navigator.serviceWorker && navigator.serviceWorker.controller){
+    el.innerHTML='<div class="offlinebereit">&#10003; <b>Für offline gesichert.</b> '+
+      'Ihr könnt jetzt in den Flugmodus – auf dem Meer läuft alles weiter.</div>';
+  }
+}
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
-    navigator.serviceWorker.register("sw.js").catch(()=>{});
+    navigator.serviceWorker.register("sw.js").then(()=>{
+      offlineBereitZeigen();
+      if(navigator.serviceWorker.ready) navigator.serviceWorker.ready.then(offlineBereitZeigen);
+    }).catch(()=>{});
+    navigator.serviceWorker.addEventListener("controllerchange", offlineBereitZeigen);
   });
 }
 
@@ -1124,12 +1142,38 @@ if("serviceWorker" in navigator){
    ============================================================ */
 const FIREBASE_CONFIG = {
   /* Werte aus der Firebase-Konsole hier einsetzen (siehe README).
-     Solange apiKey leer ist, bleibt alles lokal. */
+     Solange apiKey leer ist, bleibt alles lokal - dann laedt die App
+     NICHTS Fremdes und ist damit garantiert offline-fest. */
   apiKey: "",
   authDomain: "",
   databaseURL: "",
   projectId: ""
 };
+
+/* Firebase-SDK erst bei Bedarf nachladen (nur wenn Sync eingerichtet ist)
+   und nur wenn Internet da ist. Schlaegt das Laden fehl - z. B. auf dem Meer -
+   laeuft die App ganz normal weiter, nur der Abgleich ruht bis wieder Netz da ist.
+   So haengt kein externes Skript jemals im Startpfad der App. */
+const FIREBASE_SDK = [
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"
+];
+let sdkStatus = "leer";   /* leer | laedt | da | fehler */
+function ladeFirebaseSDK(fertig){
+  if(typeof firebase!=="undefined"){ sdkStatus="da"; fertig(true); return; }
+  if(sdkStatus==="laedt") return;
+  sdkStatus="laedt";
+  let i=0;
+  (function naechstes(){
+    if(i>=FIREBASE_SDK.length){ sdkStatus="da"; fertig(true); return; }
+    const s=document.createElement("script");
+    s.src=FIREBASE_SDK[i++];
+    s.async=true;
+    s.onload=naechstes;
+    s.onerror=()=>{ sdkStatus="fehler"; fertig(false); };
+    document.head.appendChild(s);
+  })();
+}
 
 function syncCloudFelder(){
   return { tachoStart:S.tachoStart||null, strecke:S.strecke||{}, erledigt:S.erledigt||{},
@@ -1139,18 +1183,26 @@ function syncCloudFelder(){
 
 const Cloud = (function(){
   let db=null, ref=null, code="", verbunden=false, stumm=false, timer=null;
+  /* "konfiguriert" = die Eltern WOLLEN Sync (apiKey gesetzt). Ob das SDK schon
+     geladen ist, ist davon getrennt - so erscheint die Sync-Box sofort, auch
+     bevor (oder ohne dass) das Netz das SDK liefert. */
   function konfiguriert(){
-    return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && typeof firebase!=="undefined");
+    return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
   }
   function start(){
-    if(!konfiguriert()) return;
-    try{
-      if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-      db=firebase.database();
-    }catch(e){ db=null; return; }
-    code=(localStorage.getItem("nordstern_code")||"").trim();
-    if(code) verbinde(code);
-    zeigeSyncUI();
+    if(!konfiguriert()){ zeigeSyncUI(); return; }
+    zeigeSyncUI();                         /* Code-Feld sofort zeigen */
+    if(db) return;                         /* schon verbunden - nichts weiter noetig */
+    ladeFirebaseSDK((ok)=>{
+      if(!ok) return;                      /* offline: bleibt lokal, spaeter erneut */
+      try{
+        if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        db=firebase.database();
+      }catch(e){ db=null; return; }
+      code=(localStorage.getItem("nordstern_code")||"").trim();
+      if(code) verbinde(code);
+      zeigeSyncUI();
+    });
   }
   function verbinde(c){
     if(!db) return;
@@ -1239,6 +1291,8 @@ function syncVerbinden(){
 
 zeichne();
 Cloud.start();
+/* Kommt das Netz zurueck (z. B. wieder an Land), den Sync erneut versuchen. */
+window.addEventListener("online", ()=>{ try{ Cloud.start(); }catch(e){} });
 </script>
 </body>
 </html>
