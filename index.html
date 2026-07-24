@@ -157,6 +157,17 @@ input:focus{outline:none;border-color:var(--blau)}
 .exportknoepfe{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .exportknoepfe button{flex:1;min-width:110px}
 .versteckt{display:none}
+
+/* kleine Belohnung beim Loesen eines Woerts / des Finales */
+.konfetti-box{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:80}
+.konfetti{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;opacity:0;
+  animation:konfettiFall linear forwards}
+@keyframes konfettiFall{
+  0%{transform:translate(0,-14px) rotate(0);opacity:1}
+  100%{transform:translate(var(--dx,0),105vh) rotate(600deg);opacity:.9}
+}
+@media (prefers-reduced-motion: reduce){ .konfetti{display:none} }
+
 footer{text-align:center;font-size:12px;color:var(--grau);padding:24px 10px}
 footer button{background:none;color:var(--grau);font-size:12px;text-decoration:underline;padding:6px}
 </style>
@@ -524,6 +535,33 @@ function esc(s){return String(s).replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&"
 /* wie esc, aber zusaetzlich fuer den Einsatz in value="..." (Anfuehrungszeichen) */
 function escAttr(s){return String(s).replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));}
 
+/* Enter/Return auf der Tastatur schickt dasselbe ab wie der Knopf daneben -
+   sonst muessen die Kinder nach dem Tippen extra den kleinen OK-Knopf treffen. */
+function beiEnter(ev, fn){ if(ev.key==="Enter"){ ev.preventDefault(); fn(); } }
+
+/* Kleine Belohnung beim Loesen: Konfetti (laeuft ueberall offline, kein Asset)
+   plus kurzes Vibrieren auf Android. iOS kennt navigator.vibrate nicht - der
+   Aufruf ist dort ein gefahrloser Leerlauf. Reduzierte Bewegung wird geachtet. */
+function feiern(){
+  if(navigator.vibrate){ try{ navigator.vibrate([40,40,80]); }catch(e){} }
+  if(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const farben=["#004b87","#fecc02","#2d6a4f","#9b2226","#0a6cb8"];
+  const box=document.createElement("div");
+  box.className="konfetti-box";
+  for(let i=0;i<44;i++){
+    const s=document.createElement("i");
+    s.className="konfetti";
+    s.style.left=(Math.random()*100)+"%";
+    s.style.background=farben[i%farben.length];
+    s.style.setProperty("--dx",(Math.random()*90-45)+"px");
+    s.style.animationDelay=(Math.random()*0.35)+"s";
+    s.style.animationDuration=(1.7+Math.random()*1.3)+"s";
+    box.appendChild(s);
+  }
+  document.body.appendChild(box);
+  setTimeout(()=>box.remove(), 3400);
+}
+
 /* Entwurf-Speicher: was in ein Feld getippt, aber noch nicht abgeschickt wurde,
    wird automatisch gemerkt - so geht bei einem Wechsel oder App-Neustart nichts
    verloren. Gebuendelt gespeichert und OHNE Neuzeichnen (sonst springt der Cursor). */
@@ -615,7 +653,7 @@ function etappeHtml(e){
     const m=marken();
     if(!S.tachoStart){
       h+='<div style="margin-top:14px"><p class="klein"><b>Kilometerstand beim Start:</b></p>'+
-         '<div class="feld-zeile"><input type="number" id="tachoFeld" inputmode="numeric" placeholder="z. B. 87412">'+
+         '<div class="feld-zeile"><input type="number" id="tachoFeld" inputmode="numeric" placeholder="z. B. 87412" onkeydown="beiEnter(event,setzeTacho)">'+
          '<button class="btn-klein" onclick="setzeTacho()">OK</button></div></div>';
     } else {
       h+='<div class="marken">'+
@@ -652,8 +690,8 @@ function missionHtml(e,m){
      input OHNE capture -> iOS zeigt "Fotomediathek / Foto aufnehmen / Datei". */
   h+='<input type="file" accept="image/*" class="versteckt" '+
      'id="kam_'+id+'" onchange="belegAufnehmen(this,\''+id+'\')">';
-  if(bilder[id]){
-    h+='<div class="beleg"><img src="'+bilder[id]+'" alt="Beleg">'+
+  if(bilderURL[id]){
+    h+='<div class="beleg"><img src="'+bilderURL[id]+'" alt="Beleg">'+
        '<p class="klein" style="margin-top:6px">Beleg aus eurer Mediathek.</p>'+
        '<div class="beleg-knoepfe">'+
        '<button class="btn-klein" onclick="belegWaehlen(\''+id+'\')">Anderes Bild</button>'+
@@ -684,13 +722,15 @@ function missionHtml(e,m){
        '<button class="btn-klein" onclick="zuruecknehmen(\''+id+'\')">doch nicht erledigt</button></p>';
   } else if(m.feld==="tacho"){
     h+='<div class="feld-zeile"><input type="number" inputmode="numeric" id="in_'+id+'" placeholder="Kilometerstand" '+
-       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)">'+
+       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)" '+
+       'onkeydown="beiEnter(event,function(){loeseTacho(\''+id+'\')})">'+
        '<button class="btn-klein" onclick="loeseTacho(\''+id+'\')">Los!</button></div>';
   } else if(m.feld){
     h+='<p class="klein" style="margin-top:10px">'+(m.frage||"Eure Antwort:")+'</p>'+
        '<div class="feld-zeile"><input type="'+(m.feld==="zahl"?"number":"text")+'" id="in_'+id+'" '+
        (m.feld==="zahl"?'inputmode="numeric" ':'')+'placeholder="hier eintippen" '+
-       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)">'+
+       'value="'+escAttr(S.entwurf[id]||"")+'" oninput="merkeEntwurf(\''+id+'\',this.value)" '+
+       'onkeydown="beiEnter(event,function(){pruefe('+e.id+','+m.n+')})">'+
        '<button class="btn-klein" onclick="pruefe('+e.id+','+m.n+')">OK</button></div>'+
        '<div class="m-fehler versteckt" id="err_'+id+'"></div>';
   } else {
@@ -720,7 +760,8 @@ function sammlungHtml(e){
     h+='<p style="margin-top:10px"><b>Alle Buchstaben da!</b> Sortiert sie zum Lösungswort.</p>'+
        '<p class="klein">'+e.loesungHinweis+'</p>'+
        '<div class="feld-zeile"><input type="text" id="loes_'+e.id+'" placeholder="Lösungswort" autocapitalize="characters" autocorrect="off" '+
-       'value="'+escAttr(S.entwurf["loes"+e.id]||"")+'" oninput="merkeEntwurf(\'loes'+e.id+'\',this.value)">'+
+       'value="'+escAttr(S.entwurf["loes"+e.id]||"")+'" oninput="merkeEntwurf(\'loes'+e.id+'\',this.value)" '+
+       'onkeydown="beiEnter(event,function(){pruefeLoesung('+e.id+')})">'+
        '<button class="btn-klein" onclick="pruefeLoesung('+e.id+')">Prüfen</button></div>'+
        '<div class="m-fehler versteckt" id="loeserr_'+e.id+'"></div>';
   } else {
@@ -747,7 +788,8 @@ function finaleHtml(){
     '<div class="tipp"><b>Tipp:</b> '+FINALE.tipp+'</div>'+
     '<p class="klein" style="margin-top:10px">'+FINALE.frage+'</p>'+
     '<div class="feld-zeile"><input type="text" id="in_finale" placeholder="Datum" '+
-    'value="'+escAttr(S.entwurf["finale"]||"")+'" oninput="merkeEntwurf(\'finale\',this.value)">'+
+    'value="'+escAttr(S.entwurf["finale"]||"")+'" oninput="merkeEntwurf(\'finale\',this.value)" '+
+    'onkeydown="beiEnter(event,pruefeFinale)">'+
     '<button class="btn-klein" onclick="pruefeFinale()">OK</button></div>'+
     '<div class="m-fehler versteckt" id="err_finale"></div></div>';
 }
@@ -778,25 +820,88 @@ function erledige(id){
 }
 
 /* ============================================================
-   BELEG-FOTOS
+   BELEG-FOTOS  (IndexedDB)
    Die Kinder fotografieren mit der normalen Kamera-App (die Fotos landen dabei
    automatisch in der Mediathek). Hier waehlen sie ein Bild AUS DER MEDIATHEK als
-   Beleg aus; die App merkt sich nur eine kleine verkleinerte Kopie in einem
-   EIGENEN Speicher-Schluessel. Laeuft der Platz voll, geht nur die Vorschau
-   verloren - niemals der Spielstand.
-   ============================================================ */
-const BILD_KEY="nordstern_bilder_v2";
-const BILD_MAX=420;          /* laengste Kante in Pixeln */
-let bilder = ladeBilder();
+   Beleg aus; die App merkt sich eine verkleinerte Kopie.
 
-function ladeBilder(){
-  if(!SPEICHER_OK) return {};
-  try{ const r=localStorage.getItem(BILD_KEY); return r? JSON.parse(r) : {}; }catch(e){ return {}; }
+   Frueher lag diese Kopie als base64 im localStorage - das teilt sich die
+   knappen ~5 MB mit dem Spielstand, deshalb musste die Vorschau winzig (420 px)
+   sein. Jetzt liegen die Belege als echter Blob in einer eigenen IndexedDB:
+   viel mehr Platz, kein base64-Aufblaehen, laeuft komplett offline und ist vom
+   Spielstand voellig getrennt. Darum koennen die Fotos jetzt scharf sein
+   (1280 px). Laeuft der Platz doch voll, geht nur die Vorschau verloren, nie
+   der Spielstand - der steckt in einem anderen Speicher.
+   ============================================================ */
+const BILD_DB="nordstern_bilder", BILD_STORE="belege";
+const BILD_MAX=1280;         /* laengste Kante in Pixeln - scharf genug fuers Handy */
+let bildDB=null;
+let bilderURL={};            /* id -> Object-URL fuer die Anzeige (synchron im Render) */
+
+function dbOeffnen(){
+  return new Promise((ok,fehler)=>{
+    if(bildDB){ ok(bildDB); return; }
+    let req;
+    try{ req=indexedDB.open(BILD_DB,1); }catch(e){ fehler(e); return; }
+    req.onupgradeneeded=()=>{ req.result.createObjectStore(BILD_STORE); };
+    req.onsuccess=()=>{ bildDB=req.result; ok(bildDB); };
+    req.onerror=()=>fehler(req.error);
+  });
 }
-function speichereBilder(){
-  if(!SPEICHER_OK) return true;          /* bleibt im Arbeitsspeicher */
-  try{ localStorage.setItem(BILD_KEY, JSON.stringify(bilder)); return true; }
-  catch(e){ return false; }              /* Quota voll - Spielstand bleibt unberuehrt */
+function dbAlleLaden(){
+  return dbOeffnen().then(db=>new Promise((ok)=>{
+    const st=db.transaction(BILD_STORE,"readonly").objectStore(BILD_STORE);
+    const req=st.openCursor(), treffer=[];
+    req.onsuccess=()=>{ const c=req.result; if(c){ treffer.push([c.key,c.value]); c.continue(); } else ok(treffer); };
+    req.onerror=()=>ok(treffer);
+  }));
+}
+function dbSpeichern(id, blob){
+  return dbOeffnen().then(db=>new Promise((ok,fehler)=>{
+    const tx=db.transaction(BILD_STORE,"readwrite");
+    tx.objectStore(BILD_STORE).put(blob,id);
+    tx.oncomplete=()=>ok(true); tx.onerror=()=>fehler(tx.error); tx.onabort=()=>fehler(tx.error);
+  }));
+}
+function dbLoeschen(id){
+  return dbOeffnen().then(db=>new Promise((ok)=>{
+    const tx=db.transaction(BILD_STORE,"readwrite");
+    tx.objectStore(BILD_STORE).delete(id);
+    tx.oncomplete=()=>ok(true); tx.onerror=()=>ok(false);
+  })).catch(()=>false);
+}
+function dbLeeren(){
+  return dbOeffnen().then(db=>new Promise((ok)=>{
+    const tx=db.transaction(BILD_STORE,"readwrite");
+    tx.objectStore(BILD_STORE).clear();
+    tx.oncomplete=()=>ok(true); tx.onerror=()=>ok(false);
+  })).catch(()=>false);
+}
+
+/* Alte base64-Belege aus dem localStorage einmalig in die IndexedDB heben,
+   damit ein frueh angelegter Test-Beleg nicht verloren geht. */
+function altenBestandUebernehmen(){
+  let alt=null;
+  try{ alt=JSON.parse(localStorage.getItem("nordstern_bilder_v2")||"null"); }catch(e){}
+  if(!alt || typeof alt!=="object") return Promise.resolve();
+  const ids=Object.keys(alt);
+  return Promise.all(ids.map(id=>
+    fetch(alt[id]).then(r=>r.blob()).then(b=>dbSpeichern(id,b)).catch(()=>{})
+  )).then(()=>{ try{ localStorage.removeItem("nordstern_bilder_v2"); }catch(e){} });
+}
+
+/* Beim Start: alte Belege uebernehmen, dann alle Blobs als Object-URLs laden
+   und einmal neu zeichnen. Faellt IndexedDB aus, laeuft die App normal weiter
+   (nur ohne dauerhafte Belege). */
+function belegeInitialisieren(){
+  if(!("indexedDB" in window)) return;
+  altenBestandUebernehmen()
+    .then(dbAlleLaden)
+    .then(treffer=>{
+      treffer.forEach(([id,blob])=>{ try{ bilderURL[id]=URL.createObjectURL(blob); }catch(e){} });
+      if(treffer.length) zeichne();
+    })
+    .catch(()=>{});
 }
 
 function belegWaehlen(id){
@@ -812,27 +917,28 @@ function belegAufnehmen(input, id){
   if(!S.zeit[id]) S.zeit[id]=new Date().toISOString();
   speichern();
 
-  /* Kleine Vorschau in der App merken (Beleg + Bericht). Das Originalfoto bleibt
-     in der Mediathek - hier liegt nur eine verkleinerte Kopie. Laeuft der Speicher
-     voll, geht nur die Vorschau verloren, nie der Spielstand. */
+  /* Verkleinerte Kopie als Blob merken. Das Originalfoto bleibt in der
+     Mediathek - hier liegt nur die Vorschau, jetzt scharf (bis BILD_MAX px). */
   const leser = new FileReader();
   leser.onload = (ev)=>{
     const img = new Image();
     img.onload = ()=>{
-      /* verkleinern, sonst ist der Speicher nach ein paar Fotos voll */
       let w=img.width, h=img.height;
       const f = Math.min(1, BILD_MAX/Math.max(w,h));
       w=Math.round(w*f); h=Math.round(h*f);
       const c=document.createElement("canvas");
       c.width=w; c.height=h;
       c.getContext("2d").drawImage(img,0,0,w,h);
-      let klein;
-      try{ klein = c.toDataURL("image/jpeg", 0.62); }
-      catch(e){ zeichne(); return; }
-
-      bilder[id]=klein;
-      if(speichereBilder()){ zeichne(); melde("Beleg hinzugefügt!", true); }
-      else { delete bilder[id]; zeichne(); melde("Speicher voll – Beleg nicht gemerkt. Der Spielstand ist sicher."); }
+      c.toBlob((blob)=>{
+        if(!blob){ zeichne(); return; }
+        /* Vorschau sofort zeigen - auch falls das Speichern gleich scheitert. */
+        if(bilderURL[id]) URL.revokeObjectURL(bilderURL[id]);
+        bilderURL[id]=URL.createObjectURL(blob);
+        dbSpeichern(id, blob).then(
+          ()=>{ zeichne(); melde("Beleg hinzugefügt!", true); },
+          ()=>{ zeichne(); melde("Beleg gemerkt, aber nicht dauerhaft gespeichert (Speicher voll?). Das Original ist in eurer Mediathek."); }
+        );
+      }, "image/jpeg", 0.82);
     };
     img.onerror = ()=>zeichne();
     img.src = ev.target.result;
@@ -843,7 +949,8 @@ function belegAufnehmen(input, id){
 }
 
 function belegLoeschen(id){
-  delete bilder[id]; speichereBilder(); zeichne();
+  if(bilderURL[id]){ URL.revokeObjectURL(bilderURL[id]); delete bilderURL[id]; }
+  dbLoeschen(id); zeichne();
 }
 
 /* ---- Standort: braucht KEIN Internet, GPS laeuft auch im Flugmodus ---- */
@@ -873,7 +980,14 @@ function zeitKurz(iso){
 function zuruecknehmen(id){
   delete S.erledigt[id]; delete S.antworten[id];
   const eid=parseInt(id.substring(1, id.indexOf("m")),10);
-  delete S.etappenGeloest[eid];
+  /* Ohne diesen Buchstaben ist die Etappe nicht mehr vollstaendig - also die
+     Loesung zuruecknehmen. Und alles, was erst durch diese Loesung frei wurde
+     (spaetere Etappen, Finale), muss ebenfalls wieder sperren; sonst zeigt ein
+     Reiter "geloest", laesst sich aber nicht mehr oeffnen. Der Fortschritt in
+     den Missionen dieser Etappen bleibt dabei erhalten. */
+  ETAPPEN.forEach(e=>{ if(e.id>=eid) delete S.etappenGeloest[e.id]; });
+  S.finaleGeloest=false;
+  if(S.aktiv===9 || !etappeOffen(S.aktiv)) S.aktiv=eid;
   speichern(); zeichne();
 }
 
@@ -904,6 +1018,7 @@ function pruefeLoesung(eid){
     if(eid<3) S.aktiv=eid+1;
     if(eid===3) S.aktiv=9;
     speichern(); zeichne(); window.scrollTo(0,0);
+    feiern();
     melde("Richtig! " + e.loesung + " – " + (eid===3?"jetzt kommt das Finale.":"die nächste Etappe ist offen."), true);
   } else {
     err.textContent="Das passt noch nicht. Jeder Buchstabe muss genau einmal vorkommen.";
@@ -919,6 +1034,7 @@ function pruefeFinale(){
     err.className="m-fehler"; return;
   }
   S.finaleGeloest=true; delete S.entwurf["finale"]; speichern(); zeichne(); window.scrollTo(0,0);
+  feiern();
 }
 
 let zuruecksetzenBestaetigt=false;
@@ -929,8 +1045,10 @@ function zuruecksetzenFragen(){
     setTimeout(()=>{ zuruecksetzenBestaetigt=false; }, 5000);
     return;
   }
-  S=leer(); notfallSpeicher=null; bilder={};
-  if(SPEICHER_OK){ try{ localStorage.removeItem(KEY); localStorage.removeItem(BILD_KEY); }catch(e){} }
+  S=leer(); notfallSpeicher=null;
+  Object.keys(bilderURL).forEach(id=>{ try{ URL.revokeObjectURL(bilderURL[id]); }catch(e){} });
+  bilderURL={}; dbLeeren();
+  if(SPEICHER_OK){ try{ localStorage.removeItem(KEY); }catch(e){} }
   zuruecksetzenBestaetigt=false;
   zeichne(); window.scrollTo(0,0);
 }
@@ -987,7 +1105,7 @@ function berichtText(){
                  : m.rolle==="fiona" ? "Fiona"
                  : m.rolle==="felix" ? "Felix"
                  : m.rolle==="spa" ? "Auge" : "Team";
-      const beleg = bilder[id] ? "Foto" : "—";
+      const beleg = bilderURL[id] ? "Foto" : "—";
       L.push("| "+m.n+" | "+(fertig?"":"*offen* ")+m.titel+" | "+wer+" | "+antw+" | "+wann+
              " | "+ort+" | "+beleg+" |");
     });
@@ -1000,7 +1118,7 @@ function berichtText(){
     ? "Gelöst. Der **7. August 2026** gehört den Kindern — sie bestimmen das komplette Programm."
     : "Noch offen.");
   L.push("");
-  const belegAnzahl=Object.keys(bilder).length;
+  const belegAnzahl=Object.keys(bilderURL).length;
   if(belegAnzahl){
     L.push("**Beleg-Fotos:** "+belegAnzahl+
            " Missionen mit Foto. Die Originale liegen in eurer Fotos-App (Mediathek); "+
@@ -1074,7 +1192,8 @@ function neuerImpuls(erzwingen){
   if(!e) return;
   const liste=e.impulse, jetzt=jetztMs();
   if(erzwingen || !S.impulsZeit || (jetzt-S.impulsZeit) > IMPULS_MINUTEN*60000){
-    S.impulsIdx=(S.impulsIdx+1)%liste.length;
+    /* Beim allerersten Mal (impulsZeit noch 0) impulse[0] zeigen, nicht ueberspringen. */
+    if(S.impulsZeit) S.impulsIdx=(S.impulsIdx+1)%liste.length;
     S.impulsZeit=jetzt;
     speichern();
   }
@@ -1111,6 +1230,7 @@ if("serviceWorker" in navigator){
 }
 
 zeichne();
+belegeInitialisieren();   /* Beleg-Fotos aus der IndexedDB nachladen und anzeigen */
 </script>
 </body>
 </html>

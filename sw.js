@@ -12,7 +12,7 @@
    Wichtig: Bei jeder neuen Version unten CACHE hochzaehlen (v1 -> v2 ...),
    damit alte Dateien sicher ersetzt werden.
 */
-const CACHE = "nordstern-v3";
+const CACHE = "nordstern-v4";
 
 const EIGEN = [
   "./",

@@ -146,7 +146,7 @@ Mediathek** als Beleg an:
 
 1. Knopf **„Foto hinzufügen“** → iOS zeigt **Fotomediathek / Foto aufnehmen / Datei**.
 2. **Fotomediathek** wählen → das passende Bild antippen.
-3. In der Mission bleibt eine **kleine Vorschau** (max. 420 px) als Beleg stehen, mit den
+3. In der Mission bleibt eine **scharfe Vorschau** (bis 1280 px) als Beleg stehen, mit den
    Knöpfen **Anderes Bild** und **Weg**.
 
 > [!info] Warum dieser Weg
@@ -157,9 +157,11 @@ Mediathek** als Beleg an:
 > lokalen Datei, nicht nur über https.
 
 > [!note] Speicherplatz
-> Die Vorschau-Belege liegen in einem **eigenen Speicherbereich**, getrennt vom Spielstand.
-> Läuft der Platz voll, geht nur die Vorschau verloren — **der Spielstand bleibt immer
-> sicher** (getestet), und das echte Foto ist ohnehin in der Mediathek.
+> Die Vorschau-Belege liegen in einer **eigenen Datenbank** (IndexedDB), komplett getrennt
+> vom Spielstand und mit viel mehr Platz als früher — deshalb dürfen die Vorschauen jetzt
+> scharf sein (1280 px statt 420). Läuft der Platz doch voll, geht nur die Vorschau verloren
+> — **der Spielstand bleibt immer sicher** (getestet), und das echte Foto ist ohnehin in
+> der Mediathek.
 
 ## 📤 Bericht & Export — der Rückweg in den Vault
 
