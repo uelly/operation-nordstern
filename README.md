@@ -66,14 +66,19 @@ gespeicherte – so ist sie unterwegs nie „kaputt".
 
 ## Fotos
 
-Jede Mission hat einen Knopf **„Foto aufnehmen"**. Der öffnet die **Kamera** des
-iPhones. Direkt nach der Aufnahme fragt iOS über das Teilen-Menü, ob das Foto
-gesichert werden soll – einmal auf **„Bild sichern"** tippen, und es liegt in der
-**Fotos-App (Mediathek)**, zusammen mit euren anderen Urlaubsbildern.
+Die Kinder fotografieren mit der **normalen Kamera-App** des iPhones – die Bilder
+landen dabei automatisch in der **Mediathek**. In der jeweiligen Mission tippen sie
+dann auf **„Foto hinzufügen"** und wählen das passende Bild **aus der Mediathek**
+aus. Es erscheint als kleiner **Beleg** in der Mission.
 
-In der App selbst bleibt nur eine **kleine Vorschau** als Beleg (und für den
-Bericht). Das spart Platz – die echten, hochauflösenden Fotos sind in der
-Mediathek. Über **„Nochmal in Fotos"** könnt ihr ein Foto erneut dorthin sichern.
+So bleibt die App schlank: Sie speichert nur eine **kleine Vorschau** (für den
+Bericht) – die echten, hochauflösenden Fotos liegen in der Mediathek, zusammen mit
+den übrigen Urlaubsbildern. Über **„Anderes Bild"** lässt sich der Beleg tauschen,
+über **„Weg"** entfernen.
+
+> Eine Webseite darf auf iOS aus Sicherheitsgründen **nicht selbst** in die
+> Fotomediathek schreiben, ein Bild von dort **auswählen** aber problemlos – deshalb
+> dieser Weg. Fotografiert wird mit der Kamera-App, die App hängt die Belege nur an.
 
 ---
 

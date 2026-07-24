@@ -647,23 +647,22 @@ function missionHtml(e,m){
   h+='<div class="m-body"><p>'+m.text+'</p>';
   if(m.tipp) h+='<div class="tipp"><b>Tipp:</b> '+m.tipp+'</div>';
 
-  /* Kamera: oeffnet auf dem iPhone die native Kamera in Vollbild.
-     Nach der Aufnahme bietet die App sofort an, das Originalfoto in die
-     iPhone-Fotos (Mediathek) zu legen - dort gehoert es hin. */
-  h+='<input type="file" accept="image/*" capture="environment" class="versteckt" '+
+  /* Foto-Beleg: die Kinder fotografieren mit der normalen Kamera-App (Fotos
+     landen in der Mediathek). Hier waehlen sie ein Bild AUS DER MEDIATHEK aus.
+     input OHNE capture -> iOS zeigt "Fotomediathek / Foto aufnehmen / Datei". */
+  h+='<input type="file" accept="image/*" class="versteckt" '+
      'id="kam_'+id+'" onchange="belegAufnehmen(this,\''+id+'\')">';
   if(bilder[id]){
     h+='<div class="beleg"><img src="'+bilder[id]+'" alt="Beleg">'+
-       '<p class="klein" style="margin-top:6px">Vorschau &ndash; das Originalfoto liegt in euren Fotos.</p>'+
+       '<p class="klein" style="margin-top:6px">Beleg aus eurer Mediathek.</p>'+
        '<div class="beleg-knoepfe">'+
-       '<button class="btn-klein" onclick="belegSichern(\''+id+'\')">Nochmal in Fotos</button>'+
-       '<button class="btn-klein" onclick="kameraOeffnen(\''+id+'\')">Neu</button>'+
+       '<button class="btn-klein" onclick="belegWaehlen(\''+id+'\')">Anderes Bild</button>'+
        '<button class="btn-klein" onclick="belegLoeschen(\''+id+'\')">Weg</button>'+
        '</div></div>';
   } else {
     h+='<div class="kamerazeile">'+
-       '<button class="btn-kamera hell" onclick="kameraOeffnen(\''+id+'\')">'+
-         'Foto aufnehmen<span>Kamera öffnen &middot; Foto kommt in eure Fotos</span></button>'+
+       '<button class="btn-kamera hell" onclick="belegWaehlen(\''+id+'\')">'+
+         'Foto hinzufügen<span>aus eurer Mediathek auswählen</span></button>'+
        '</div>';
   }
 
@@ -780,9 +779,11 @@ function erledige(id){
 
 /* ============================================================
    BELEG-FOTOS
-   <input capture> oeffnet auf dem iPhone die native Kamera in Vollbild.
-   Die Bilder liegen in einem EIGENEN Speicher-Schluessel: Laeuft der Platz voll,
-   gehen nur Fotos verloren - niemals der Spielstand.
+   Die Kinder fotografieren mit der normalen Kamera-App (die Fotos landen dabei
+   automatisch in der Mediathek). Hier waehlen sie ein Bild AUS DER MEDIATHEK als
+   Beleg aus; die App merkt sich nur eine kleine verkleinerte Kopie in einem
+   EIGENEN Speicher-Schluessel. Laeuft der Platz voll, geht nur die Vorschau
+   verloren - niemals der Spielstand.
    ============================================================ */
 const BILD_KEY="nordstern_bilder_v2";
 const BILD_MAX=420;          /* laengste Kante in Pixeln */
@@ -798,45 +799,22 @@ function speichereBilder(){
   catch(e){ return false; }              /* Quota voll - Spielstand bleibt unberuehrt */
 }
 
-function kameraOeffnen(id){
+function belegWaehlen(id){
   const inp=document.getElementById("kam_"+id);
   if(inp) inp.click();
-}
-
-/* ------------------------------------------------------------
-   Foto in die iPhone-Mediathek legen.
-   Eine Webseite kann NICHT von sich aus in die Fotos schreiben - der
-   iOS-Weg ist das Teilen-Menue: Wir reichen das Originalfoto per
-   navigator.share weiter, der Nutzer tippt einmal auf "Bild sichern",
-   und es liegt in der Mediathek. Das muss synchron im Fingertipp der
-   Aufnahme passieren, sonst blockt iOS das Teilen.
-   ------------------------------------------------------------ */
-function belegInMediathek(datei){
-  try{
-    if(navigator.canShare && navigator.canShare({files:[datei]}) && navigator.share){
-      navigator.share({files:[datei]}).catch(()=>{});
-      return true;
-    }
-  }catch(e){}
-  return false;
 }
 
 function belegAufnehmen(input, id){
   const datei = input.files && input.files[0];
   if(!datei) return;
 
-  /* 1) SOFORT (noch im Fingertipp) das Originalfoto zum Sichern in die
-        Fotos-Mediathek anbieten - das ist der Hauptweg. */
-  const geteilt = belegInMediathek(datei);
-
-  /* Zeitstempel: markiert die Mission als "Foto gemacht" - auch dann, wenn
-     die kleine Vorschau unten (Schritt 2) am vollen Speicher scheitern sollte. */
+  /* Zeitstempel: markiert, wann der Beleg angehaengt wurde. */
   if(!S.zeit[id]) S.zeit[id]=new Date().toISOString();
   speichern();
 
-  /* 2) zusaetzlich eine kleine Vorschau in der App merken (Beweis + Bericht).
-        Laeuft der Speicher voll, geht nur die Vorschau verloren - das echte
-        Foto liegt dann trotzdem in den Fotos. */
+  /* Kleine Vorschau in der App merken (Beleg + Bericht). Das Originalfoto bleibt
+     in der Mediathek - hier liegt nur eine verkleinerte Kopie. Laeuft der Speicher
+     voll, geht nur die Vorschau verloren, nie der Spielstand. */
   const leser = new FileReader();
   leser.onload = (ev)=>{
     const img = new Image();
@@ -853,13 +831,8 @@ function belegAufnehmen(input, id){
       catch(e){ zeichne(); return; }
 
       bilder[id]=klein;
-      if(!speichereBilder()) delete bilder[id];   /* Vorschau optional - Spielstand bleibt */
-      zeichne();
-      if(!geteilt){
-        /* Kein Teilen moeglich (aelteres Geraet): Hinweis, wie das Foto trotzdem
-           in die Mediathek kommt. */
-        melde("Foto gemerkt. Tippt „Nochmal in Fotos“, um es in eure Fotos zu legen.");
-      }
+      if(speichereBilder()){ zeichne(); melde("Beleg hinzugefügt!", true); }
+      else { delete bilder[id]; zeichne(); melde("Speicher voll – Beleg nicht gemerkt. Der Spielstand ist sicher."); }
     };
     img.onerror = ()=>zeichne();
     img.src = ev.target.result;
@@ -871,29 +844,6 @@ function belegAufnehmen(input, id){
 
 function belegLoeschen(id){
   delete bilder[id]; speichereBilder(); zeichne();
-}
-
-/* Beleg ueber das iOS-Teilen-Menue in die Fotos-App legen */
-function belegSichern(id){
-  const d=bilder[id];
-  if(!d){ return; }
-  try{
-    const teile=d.split(","), bin=atob(teile[1]);
-    const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-    const blob=new Blob([arr], {type:"image/jpeg"});
-    const datei=new File([blob], "nordstern_"+id+".jpg", {type:"image/jpeg"});
-    if(navigator.canShare && navigator.canShare({files:[datei]}) && navigator.share){
-      navigator.share({files:[datei], title:"Operation Nordstern"})
-        .catch(()=>{});
-      return;
-    }
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob); a.download="nordstern_"+id+".jpg";
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
-    melde("Bild gesichert.", true);
-  }catch(e){ melde("Sichern klappt auf diesem Gerät nicht."); }
 }
 
 /* ---- Standort: braucht KEIN Internet, GPS laeuft auch im Flugmodus ---- */
